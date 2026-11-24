@@ -1,0 +1,35 @@
+{
+  "baseline_at": "2026-11-23 17:59",
+  "model": "qwen2.5:7b",
+  "embed": "bge-m3",
+  "min_score": 0.45,
+  "chunks": 32,
+  "passed": 0,
+  "total": 1,
+  "redline": {
+    "total": 0,
+    "pass": 0
+  },
+  "cases": [
+    {
+      "id": "Q003",
+      "question": "师傅爽约了怎么投诉",
+      "scene": "长尾",
+      "redline": false,
+      "layer": "生成",
+      "expect_layer": "生成",
+      "passed": false,
+      "missed_anchors": [
+        [
+          "服务券",
+          "50 元",
+          "50元",
+          "赔付",
+          "补偿"
+        ]
+      ],
+      "seconds": 4.78,
+      "answer": "师傅爽约后，您可以通过以下方式进行投诉：\n\n1. 通过官方小程序进入“服务单 - 投诉”入口提交投诉[3]。\n2. 拨打客服热线（7×24小时）进行投诉[3]。\n3. 投诉时请提供工单号，以便快速处理。\n\n如需进一步帮助，建议联系客服。"
+    }
+  ]
+}
