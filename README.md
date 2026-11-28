@@ -135,6 +135,7 @@ python3 04_rag.py --strict "师傅爽约了怎么投诉"
 | `05_eval.py` | 评测脚本：锚点法二值判定 + 层级核对，支持单题复跑 |
 | `06_experiment.py` | 稳定性实验：同题连跑 N 次，支持温度对比与 `--strict` 结构化抽取模式 |
 | `evals_template.csv` | 评测集 10 条定义 |
+| `docs/评测集速查表.md` | 评测集人话版对照：每条题在测什么、已知表现 |
 | `eval_results.json` | 基线存档（对比基准） |
 | `docs/` | 知识库语料 6 份（虚构脱敏，32 知识块） |
 | `一键提问.command` / `一键问知识库.command` | macOS 双击入口 |
