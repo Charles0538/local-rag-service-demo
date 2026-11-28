@@ -240,6 +240,38 @@ def retrieve(question: str, index: list, k: int = TOP_K, debug: bool = False) ->
     return picked
 
 
+# ---------- 第 3.5 步：结构化抽取（三级解法的第 2 级） ----------
+# 教训来源：Q003「师傅爽约怎么投诉」，prompt 改三版仍 11 次 3 漏「50 元」——
+# 凡是「模型自己判断有没有做到」的规则都不可靠。正解：数字由代码保证，模型只负责组织语言。
+
+FACT_PATTERNS = [
+    re.compile(r"\d+(?:\.\d+)?\s*元"),                  # 金额：50 元
+    re.compile(r"\d+\s*(?:小时|个工作日|天)"),            # 时限：24 小时 / 3 个工作日
+    re.compile(r"\d+\s*年"),                            # 年限：1 年 / 3 年
+]
+
+
+def extract_facts(hits: list) -> list:
+    """从召回块里抽硬数值（金额/时限/年限），去重后作为「必须包含清单」。
+    注意范围由调用方决定：传 hits[:1] = 只取最高分块（回答问题的主依据块），
+    避免把退换货等无关数值也塞进清单。"""
+    seen, out = set(), []
+    for _, item in hits:
+        for pat in FACT_PATTERNS:
+            for m in pat.findall(item["text"]):
+                key = m.replace(" ", "")
+                if key not in seen:
+                    seen.add(key)
+                    out.append(m)
+    return out[:8]
+
+
+def verify_facts(answer: str, facts: list) -> list:
+    """三级解法的第 3 级：生成后校验——清单里的数值答案里没写全，返回缺失项。"""
+    missing = [f for f in facts if f.replace(" ", "") not in answer.replace(" ", "")]
+    return missing
+
+
 # ---------- 第 4 步：生成 ----------
 
 SYSTEM = """你是家电售后服务助手。只能依据【资料】回答，严禁编造。
@@ -255,11 +287,16 @@ SYSTEM = """你是家电售后服务助手。只能依据【资料】回答，�
 8. 全部回答不超过 200 字。"""
 
 
-def ask_with_context(question: str, hits: list) -> dict:
+def ask_with_context(question: str, hits: list, facts: list = None,
+                     temperature: float = 0.2) -> dict:
     ctx = []
     for i, (score, item) in enumerate(hits, 1):
         ctx.append(f"[{i}] （来源：{item['source']} · {item['section']}）\n{item['text']}")
     user = "【资料】\n" + "\n\n".join(ctx) + f"\n\n【用户问题】\n{question}"
+    if facts:
+        user += ("\n\n【必须包含的信息】\n以下数值均出自【资料】原文，"
+                 "回答中凡涉及相关内容，必须原样写出这些数值，不得省略或改写：\n- "
+                 + "\n- ".join(facts))
 
     payload = {
         "model": CHAT_MODEL,
@@ -268,7 +305,7 @@ def ask_with_context(question: str, hits: list) -> dict:
             {"role": "user", "content": user},
         ],
         "stream": False,
-        "options": {"temperature": 0.2},   # 问答要稳，不要发散
+        "options": {"temperature": temperature},   # 问答要稳，不要发散
     }
     req = urllib.request.Request(
         f"{OLLAMA}/api/chat",
@@ -289,6 +326,7 @@ def main() -> None:
     args = [a for a in sys.argv[1:]]
     rebuild = "--rebuild" in args
     debug = "--debug" in args
+    strict = "--strict" in args
     args = [a for a in args if not a.startswith("--")]
     question = args[0] if args else "空调显示 E5 是什么故障，需要报修吗？"
 
@@ -321,8 +359,23 @@ def main() -> None:
         print("       建议：转人工客服，或补充对应知识库文档后重试。")
         return
 
-    r = ask_with_context(question, hits)
-    print(r["message"]["content"].strip())
+    r = ask_with_context(question, hits, facts=(extract_facts(hits[:1]) if strict else None))
+    answer = r["message"]["content"].strip()
+    if strict:
+        # 三级解法第 3 级：生成后校验，缺了重试一次
+        facts = extract_facts(hits[:1])
+        missing = verify_facts(answer, facts)
+        if missing:
+            print(f"[校验] 首稿缺数值 {missing}，重试一次……")
+            r2 = ask_with_context(
+                question + f"\n\n（你上一稿遗漏了以下数值，必须原样写出：{'、'.join(missing)}）",
+                hits, facts=facts)
+            still = verify_facts(r2["message"]["content"].strip(), facts)
+            if len(still) < len(missing):
+                answer = r2["message"]["content"].strip()
+                missing = still
+        print(f"[校验] 必须包含清单校验：{'✅ 全部出现' if not missing else '⚠️ 仍缺 ' + str(missing)}")
+    print(answer)
     print("-" * 64)
     ec = r.get("eval_count", 0)
     ed = r.get("eval_duration", 1) or 1
